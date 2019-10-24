@@ -35,9 +35,9 @@ func main() {
 		}
 		os.Exit(1)
 	}
-	envName = os.Args[1]    //环境名
-	progPath = os.Args[2]   //监听端口，0表示自动分配
-	etcdAddrs = os.Args[3:] //etcd地址
+	envName = os.Args[1]
+	progPath = os.Args[2]
+	etcdAddrs = os.Args[3:]
 
 	go updateProcess()
 	go checkFsChange()
