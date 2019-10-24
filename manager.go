@@ -53,6 +53,7 @@ func (mg *Manager) Run() {
 	go mg.waitExit()
 	for {
 		if mg.isRunning() == false {
+			time.Sleep(100 * time.Millisecond)
 			break
 		}
 		mg.updateChan <- struct{}{}
