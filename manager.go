@@ -3,11 +3,15 @@ package main
 import (
 	"io/ioutil"
 	"log"
+	"os"
+	"os/signal"
 	"path"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"go.uber.org/atomic"
 )
 
 type Manager struct {
@@ -16,6 +20,7 @@ type Manager struct {
 	watcher        *fsnotify.Watcher
 	processManager *ProcessManager
 	updateChan     chan struct{}
+	running        atomic.Bool
 }
 
 func NewManger(progPath string, cmdArgs []string) (*Manager, error) {
@@ -38,9 +43,18 @@ func NewManger(progPath string, cmdArgs []string) (*Manager, error) {
 }
 
 func (mg *Manager) Run() {
+	//返回旧值
+	if mg.running.Swap(true) {
+		log.Println("already Run")
+		return
+	}
 	go mg.checkFsChange()
 	go mg.updateProcess()
+	go mg.waitExit()
 	for {
+		if mg.isRunning() == false {
+			break
+		}
 		mg.updateChan <- struct{}{}
 		time.Sleep(15 * time.Second)
 	}
@@ -48,6 +62,9 @@ func (mg *Manager) Run() {
 
 func (mg *Manager) checkFsChange() {
 	for {
+		if mg.isRunning() == false {
+			break
+		}
 		select {
 		case ev := <-mg.watcher.Events:
 			{
@@ -75,6 +92,9 @@ func (mg *Manager) checkFsChange() {
 
 func (mg *Manager) updateProcess() {
 	for {
+		if mg.isRunning() == false {
+			break
+		}
 		<-mg.updateChan
 		mg.processManager.StopNonExistProgram()
 		files, err := ioutil.ReadDir(mg.progPath)
@@ -97,4 +117,24 @@ func (mg *Manager) updateProcess() {
 			}()
 		}
 	}
+}
+
+func (mg *Manager) waitExit() {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	sig := <-sigs
+	log.Println("catch signal", sig)
+	if sig == syscall.SIGINT || sig == syscall.SIGTERM || sig == syscall.SIGQUIT {
+		mg.stopRunning()
+		mg.processManager.StopAll()
+		os.Exit(0)
+	}
+}
+
+func (mg *Manager) isRunning() bool {
+	return mg.running.Load()
+}
+
+func (mg *Manager) stopRunning() {
+	mg.running.Store(false)
 }

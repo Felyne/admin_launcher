@@ -102,17 +102,28 @@ func (pm *ProcessManager) Stop(filePath string) error {
 
 //停止文件路径不存在的程序
 func (pm *ProcessManager) StopNonExistProgram() {
-	var absPathList []string
-	pm.mu.Lock()
-	for absPath, _ := range pm.filePidMap {
-		absPathList = append(absPathList, absPath)
-	}
-	pm.mu.Unlock()
-
+	absPathList := pm.filePathList()
 	for _, absPath := range absPathList {
 		if _, err := os.Stat(absPath); err != nil {
 			pm.Stop(absPath)
 			log.Printf("stop program %s\n", absPath)
 		}
 	}
+}
+
+func (pm *ProcessManager) StopAll() {
+	absPathList := pm.filePathList()
+	for _, absPath := range absPathList {
+		pm.Stop(absPath)
+	}
+}
+
+func (pm *ProcessManager) filePathList() []string {
+	var absPathList []string
+	pm.mu.Lock()
+	for absPath, _ := range pm.filePidMap {
+		absPathList = append(absPathList, absPath)
+	}
+	pm.mu.Unlock()
+	return absPathList
 }
