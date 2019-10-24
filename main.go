@@ -22,7 +22,7 @@ var (
 	etcdAddrs []string
 )
 
-var manager = NewManager()
+var manager = NewProcessManager()
 var updateChan = make(chan bool, 1)
 
 func main() {
