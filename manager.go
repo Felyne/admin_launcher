@@ -4,15 +4,18 @@ import (
 	"io/ioutil"
 	"log"
 	"path"
+	"path/filepath"
+	"time"
 
-	"github.com/howeyc/fsnotify"
+	"github.com/fsnotify/fsnotify"
 )
 
 type Manager struct {
-	progPath       string
-	cmdArgs        []string
+	progPath       string   //存放程序文件的目录路径
+	cmdArgs        []string //运行程序的命令行参数
 	watcher        *fsnotify.Watcher
 	processManager *ProcessManager
+	updateChan     chan struct{}
 }
 
 func NewManger(progPath string, cmdArgs []string) (*Manager, error) {
@@ -20,51 +23,78 @@ func NewManger(progPath string, cmdArgs []string) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	manager := &Manager{
+	if err := w.Add(progPath); err != nil {
+		return nil, err
+	}
+	mg := &Manager{
 		progPath:       progPath,
 		cmdArgs:        cmdArgs,
 		watcher:        w,
 		processManager: NewProcessManager(),
+		updateChan:     make(chan struct{}, 1),
 	}
-	go manager.checkFsChange()
-	return manager, nil
+
+	return mg, nil
 }
 
-func (manager *Manager) Run() {
-
+func (mg *Manager) Run() {
+	go mg.checkFsChange()
+	go mg.updateProcess()
+	for {
+		mg.updateChan <- struct{}{}
+		time.Sleep(15 * time.Second)
+	}
 }
 
-func (manager *Manager) checkFsChange() {
-	manager.watcher.Watch(manager.progPath)
+func (mg *Manager) checkFsChange() {
 	for {
 		select {
-		case ev := <-manager.watcher.Event:
+		case ev := <-mg.watcher.Events:
 			{
-				manager.processManager.Stop(ev.Name)
-				manager.processManager.Start(ev.Name, manager.cmdArgs...)
-				log.Printf("restart %s\n", ev.Name)
+				if ev.Op&fsnotify.Create == fsnotify.Create {
+					mg.processManager.Start(ev.Name, mg.cmdArgs...)
+					log.Printf("start program %s\n", ev.Name)
+				}
+				if ev.Op&fsnotify.Write == fsnotify.Write {
+					mg.processManager.Stop(ev.Name)
+					mg.processManager.Start(ev.Name, mg.cmdArgs...)
+					log.Printf("restart program %s\n", ev.Name)
+				}
+				if ev.Op&fsnotify.Remove == fsnotify.Remove ||
+					ev.Op&fsnotify.Rename == fsnotify.Rename {
+					mg.processManager.Stop(ev.Name)
+					log.Printf("stop program %s\n", ev.Name)
+				}
+
 			}
-		case <-manager.watcher.Error:
-			updateChan <- true
+		case <-mg.watcher.Errors:
+			mg.updateChan <- struct{}{}
 		}
 	}
 }
 
-func (manager *Manager) startExistProgram(dirPath string) {
-	files, err := ioutil.ReadDir(progPath)
-	if nil != err {
-		return
-	}
-	for _, f := range files {
-		name := f.Name()
-		realPath := path.Join(progPath, f.Name())
-		go func() {
-			err := manager.processManager.Start(realPath, manager.cmdArgs...)
-			if err != nil && err != ErrStarted {
-				log.Println(err)
-			} else if nil == err {
-				log.Printf("start prog %s \n", name)
-			}
-		}()
+func (mg *Manager) updateProcess() {
+	for {
+		<-mg.updateChan
+		mg.processManager.StopNonExistProgram()
+		files, err := ioutil.ReadDir(mg.progPath)
+		if err != nil {
+			continue
+		}
+		for _, f := range files {
+			name := f.Name()
+			realPath := path.Join(mg.progPath, f.Name())
+			filepath.Join()
+			go func() {
+				err := mg.processManager.Start(realPath, mg.cmdArgs...)
+				if err == nil {
+					log.Printf("start program %s\n", name)
+					return
+				}
+				if err != ErrStarted {
+					log.Println(err)
+				}
+			}()
+		}
 	}
 }

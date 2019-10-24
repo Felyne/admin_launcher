@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 )
 
 var ErrStarted = errors.New("the program has started")
@@ -23,16 +24,17 @@ func NewProcessManager() *ProcessManager {
 	}
 }
 
-func (manager *ProcessManager) Start(filePath string, argv ...string) error {
+//程序路径和它的命令行参数
+func (pm *ProcessManager) Start(filePath string, argv ...string) error {
 	absPath, err := filepath.Abs(filePath)
-	if nil != err {
+	if err != nil {
 		return err
 	}
 
-	manager.mu.Lock()
-	defer manager.mu.Unlock()
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
 
-	_, ok := manager.filePidMap[absPath]
+	_, ok := pm.filePidMap[absPath]
 	if ok {
 		return ErrStarted
 	}
@@ -40,77 +42,77 @@ func (manager *ProcessManager) Start(filePath string, argv ...string) error {
 	args := []string{programName}
 	args = append(args, argv...)
 	log.Println(strings.Join(args, " "))
+
 	p, err := os.StartProcess(absPath, args, &os.ProcAttr{
 		Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
 	})
-	if nil != err {
+	if err != nil {
 		log.Println(err)
 		return err
 	}
-	manager.filePidMap[absPath] = p.Pid
-	go manager.waitExit(absPath, p)
+	pm.filePidMap[absPath] = p.Pid
+	go pm.waitExit(absPath, p)
+
 	return nil
 }
 
-func (manager *ProcessManager) waitExit(filePath string, p *os.Process) {
+func (pm *ProcessManager) waitExit(filePath string, p *os.Process) {
 	stat, err := p.Wait()
-	if nil != err {
+	if err != nil {
 		log.Println(err)
 		return
 	}
-	manager.mu.Lock()
-	defer manager.mu.Unlock()
-	pid, _ := manager.filePidMap[filePath]
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	pid := pm.filePidMap[filePath]
 	if pid == p.Pid {
-		delete(manager.filePidMap, filePath)
-		log.Printf("prog %s exist %s\n", filePath, stat.String())
+		delete(pm.filePidMap, filePath)
+		log.Printf("program %s exist %s\n",
+			filePath, stat.String())
 	}
 }
 
-func (manager *ProcessManager) Stop(filePath string) error {
+func (pm *ProcessManager) Stop(filePath string) error {
 	absPath, err := filepath.Abs(filePath)
-	if nil != err {
+	if err != nil {
 		return err
 	}
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
 
-	manager.mu.Lock()
-	defer manager.mu.Unlock()
-
-	pid, ok := manager.filePidMap[absPath]
+	pid, ok := pm.filePidMap[absPath]
 	if false == ok {
 		return nil
 	}
-	func() {
-		p, err := os.FindProcess(pid)
-		if err != nil {
-			return
-		}
+	p, err := os.FindProcess(pid)
+	if err == nil {
 		p.Signal(syscall.SIGTERM)
-		//p.Signal(syscall.SIGINT)
-	}()
+		p.Signal(syscall.SIGINT)
+		go func() {
+			time.Sleep(100 * time.Millisecond)
+			p.Kill()
+		}()
+	}
 
-	delete(manager.filePidMap, absPath)
+	delete(pm.filePidMap, absPath)
+
 	return nil
 }
 
 //停止文件路径不存在的程序
-func (manager *ProcessManager) StopNonExistProgram() {
-	absPathList := make([]string, 0)
-	func() {
-		manager.mu.Lock()
-		defer manager.mu.Unlock()
-
-		for absPath, _ := range manager.filePidMap {
-			absPathList = append(absPathList, absPath)
-		}
-
-	}()
+func (pm *ProcessManager) StopNonExistProgram() {
+	var absPathList []string
+	pm.mu.Lock()
+	for absPath, _ := range pm.filePidMap {
+		absPathList = append(absPathList, absPath)
+	}
+	pm.mu.Unlock()
 
 	for _, absPath := range absPathList {
-		_, err := os.Stat(absPath)
-		if nil != err {
-			manager.Stop(absPath)
-			log.Printf("stop prog %s\n", absPath)
+		if _, err := os.Stat(absPath); err != nil {
+			pm.Stop(absPath)
+			log.Printf("stop program %s\n", absPath)
 		}
 	}
 }
