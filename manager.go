@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"path"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -19,7 +18,7 @@ type Manager struct {
 	cmdArgs        []string //运行程序的命令行参数
 	watcher        *fsnotify.Watcher
 	processManager *ProcessManager
-	updateChan     chan struct{}
+	stopChan       chan struct{}
 	running        atomic.Bool
 }
 
@@ -36,7 +35,7 @@ func NewManger(progPath string, cmdArgs []string) (*Manager, error) {
 		cmdArgs:        cmdArgs,
 		watcher:        w,
 		processManager: NewProcessManager(),
-		updateChan:     make(chan struct{}, 1),
+		stopChan:       make(chan struct{}),
 	}
 
 	return mg, nil
@@ -45,79 +44,82 @@ func NewManger(progPath string, cmdArgs []string) (*Manager, error) {
 func (mg *Manager) Run() {
 	//返回旧值
 	if mg.running.Swap(true) {
-		log.Println("already Run")
 		return
 	}
-	go mg.checkFsChange()
-	go mg.updateProcess()
+	mg.review()
 	go mg.waitExit()
-	for {
-		if mg.isRunning() == false {
-			time.Sleep(100 * time.Millisecond)
-			break
-		}
-		mg.updateChan <- struct{}{}
-		time.Sleep(15 * time.Second)
-	}
+	mg.run()
 }
 
-func (mg *Manager) checkFsChange() {
+func (mg *Manager) run() {
 	for {
-		if mg.isRunning() == false {
-			break
-		}
 		select {
 		case ev := <-mg.watcher.Events:
 			{
 				if ev.Op&fsnotify.Create == fsnotify.Create {
-					mg.processManager.Start(ev.Name, mg.cmdArgs...)
+					mg.startProcess(ev.Name)
 					log.Printf("start program %s\n", ev.Name)
 				}
 				if ev.Op&fsnotify.Write == fsnotify.Write {
-					mg.processManager.Stop(ev.Name)
-					mg.processManager.Start(ev.Name, mg.cmdArgs...)
+					mg.stopProcess(ev.Name)
+					mg.startProcess(ev.Name)
 					log.Printf("restart program %s\n", ev.Name)
 				}
 				if ev.Op&fsnotify.Remove == fsnotify.Remove ||
 					ev.Op&fsnotify.Rename == fsnotify.Rename {
-					mg.processManager.Stop(ev.Name)
+					mg.stopProcess(ev.Name)
 					log.Printf("stop program %s\n", ev.Name)
 				}
-
 			}
 		case <-mg.watcher.Errors:
-			mg.updateChan <- struct{}{}
+			mg.review()
+		case <-time.After(15 * time.Second):
+			mg.review()
+		case <-mg.stopChan:
+			mg.stopAllProcess()
+			return
 		}
 	}
 }
 
-func (mg *Manager) updateProcess() {
-	for {
-		if mg.isRunning() == false {
-			break
-		}
-		<-mg.updateChan
-		mg.processManager.StopNonExistProgram()
-		files, err := ioutil.ReadDir(mg.progPath)
-		if err != nil {
-			continue
-		}
-		for _, f := range files {
-			name := f.Name()
-			realPath := path.Join(mg.progPath, f.Name())
-			filepath.Join()
-			go func() {
-				err := mg.processManager.Start(realPath, mg.cmdArgs...)
-				if err == nil {
-					log.Printf("start program %s\n", name)
-					return
-				}
-				if err != ErrStarted {
-					log.Println(err)
-				}
-			}()
+//复查
+//停掉文件路径不存在的程序，启动文件存在但尚未启动的程序
+func (mg *Manager) review() {
+	mg.processManager.StopNonExistProgram()
+	files, err := ioutil.ReadDir(mg.progPath)
+	if err != nil {
+		return
+	}
+	for _, f := range files {
+		name := f.Name()
+		realPath := path.Join(mg.progPath, f.Name())
+		err := mg.startProcess(realPath)
+		if err == nil {
+			log.Printf("start program %s\n", name)
+		} else if err != ErrStarted {
+			log.Println(err)
 		}
 	}
+}
+
+func (mg *Manager) startProcess(filePath string) error {
+	return mg.processManager.Start(filePath, mg.cmdArgs...)
+}
+
+func (mg *Manager) stopProcess(filePath string) error {
+	return mg.processManager.Stop(filePath)
+}
+
+func (mg *Manager) stopAllProcess() {
+	mg.processManager.StopAll()
+}
+
+func (mg *Manager) isRunning() bool {
+	return mg.running.Load()
+}
+
+func (mg *Manager) stopRunning() {
+	mg.running.Store(false)
 }
 
 func (mg *Manager) waitExit() {
@@ -127,15 +129,6 @@ func (mg *Manager) waitExit() {
 	log.Println("catch signal", sig)
 	if sig == syscall.SIGINT || sig == syscall.SIGTERM || sig == syscall.SIGQUIT {
 		mg.stopRunning()
-		mg.processManager.StopAll()
-		os.Exit(0)
+		mg.stopChan <- struct{}{}
 	}
-}
-
-func (mg *Manager) isRunning() bool {
-	return mg.running.Load()
-}
-
-func (mg *Manager) stopRunning() {
-	mg.running.Store(false)
 }
