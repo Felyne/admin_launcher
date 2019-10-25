@@ -85,7 +85,7 @@ func (mg *Manager) run() {
 //复查
 //停掉文件路径不存在的程序，启动文件存在但尚未启动的程序
 func (mg *Manager) review() {
-	mg.processManager.StopNonExistProgram()
+	mg.processManager.StopNonExist()
 	files, err := ioutil.ReadDir(mg.progPath)
 	if err != nil {
 		return
@@ -114,21 +114,23 @@ func (mg *Manager) stopAllProcess() {
 	mg.processManager.StopAll()
 }
 
+func (mg *Manager) waitExit() {
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGINT,
+		syscall.SIGTERM, syscall.SIGQUIT)
+	sig := <-ch
+	log.Println("catch signal", sig)
+	if sig == syscall.SIGINT || sig == syscall.SIGTERM ||
+		sig == syscall.SIGQUIT {
+		mg.stopChan <- struct{}{}
+		mg.stopRunning()
+	}
+}
+
 func (mg *Manager) isRunning() bool {
 	return mg.running.Load()
 }
 
 func (mg *Manager) stopRunning() {
 	mg.running.Store(false)
-}
-
-func (mg *Manager) waitExit() {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
-	sig := <-sigs
-	log.Println("catch signal", sig)
-	if sig == syscall.SIGINT || sig == syscall.SIGTERM || sig == syscall.SIGQUIT {
-		mg.stopRunning()
-		mg.stopChan <- struct{}{}
-	}
 }

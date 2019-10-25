@@ -101,7 +101,7 @@ func (pm *ProcessManager) Stop(filePath string) error {
 }
 
 //停止文件路径不存在的程序
-func (pm *ProcessManager) StopNonExistProgram() {
+func (pm *ProcessManager) StopNonExist() {
 	absPathList := pm.filePathList()
 	for _, absPath := range absPathList {
 		if _, err := os.Stat(absPath); err != nil {
