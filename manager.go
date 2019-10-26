@@ -120,11 +120,8 @@ func (mg *Manager) waitExit() {
 		syscall.SIGTERM, syscall.SIGQUIT)
 	sig := <-ch
 	log.Println("catch signal", sig)
-	if sig == syscall.SIGINT || sig == syscall.SIGTERM ||
-		sig == syscall.SIGQUIT {
-		mg.stopChan <- struct{}{}
-		mg.stopRunning()
-	}
+	mg.stopChan <- struct{}{}
+	mg.stopRunning()
 }
 
 func (mg *Manager) isRunning() bool {
