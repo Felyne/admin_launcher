@@ -47,7 +47,7 @@ func (mg *Manager) Run() {
 		return
 	}
 	mg.review()
-	go mg.waitExit()
+	mg.waitExit()
 	mg.run()
 }
 
@@ -115,13 +115,16 @@ func (mg *Manager) stopAllProcess() {
 }
 
 func (mg *Manager) waitExit() {
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGINT,
-		syscall.SIGTERM, syscall.SIGQUIT)
-	sig := <-ch
-	log.Println("catch signal", sig)
-	mg.stopChan <- struct{}{}
-	mg.stopRunning()
+	go func() {
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, syscall.SIGINT,
+			syscall.SIGTERM, syscall.SIGQUIT)
+		sig := <-ch
+		log.Println("catch signal", sig)
+		mg.stopChan <- struct{}{}
+		mg.stopRunning()
+	}()
+
 }
 
 func (mg *Manager) isRunning() bool {
