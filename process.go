@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 )
 
 var ErrStarted = errors.New("the program has started")
@@ -89,10 +88,10 @@ func (pm *ProcessManager) Stop(filePath string) error {
 	if err == nil {
 		p.Signal(syscall.SIGTERM)
 		p.Signal(syscall.SIGINT)
-		go func() {
-			time.Sleep(100 * time.Millisecond)
-			p.Kill()
-		}()
+		//go func() {
+		//	time.Sleep(100 * time.Millisecond)
+		//	p.Kill()
+		//}()
 	}
 
 	delete(pm.filePidMap, absPath)
