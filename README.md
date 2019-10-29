@@ -11,7 +11,7 @@
 ```shell
 # 先上传相关配置到etcd
 # /tmp/test目录下放程序文件
-./admin_launcher dev /tmp/test localhost:2379
+./micro-launcher dev /tmp/test localhost:2379
 ```
 
 #### 注意

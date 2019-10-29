@@ -1,4 +1,4 @@
-module github.com/Felyne/admin_launcher
+module github.com/Felyne/micro-launcher
 
 go 1.12
 

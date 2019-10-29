@@ -1,6 +1,6 @@
 HEAD = `git rev-parse HEAD`
 TIME = `date +%FT%T%z`
-BINARY = "admin_launcher"
+BINARY = "micro-launcher"
 
 
 default: gotool
