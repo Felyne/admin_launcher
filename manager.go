@@ -52,6 +52,7 @@ func (mg *Manager) Run() {
 }
 
 func (mg *Manager) run() {
+	ticker := time.NewTicker(5*time.Second)
 	for {
 		select {
 		case ev := <-mg.watcher.Events:
@@ -73,7 +74,7 @@ func (mg *Manager) run() {
 			}
 		case <-mg.watcher.Errors:
 			mg.review()
-		case <-time.After(15 * time.Second):
+		case <-ticker.C:
 			mg.review()
 		case <-mg.stopChan:
 			mg.stopAllProcess()
