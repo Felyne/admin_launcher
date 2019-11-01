@@ -52,7 +52,7 @@ func (mg *Manager) Run() {
 }
 
 func (mg *Manager) run() {
-	ticker := time.NewTicker(5*time.Second)
+	ticker := time.NewTicker(10*time.Second)
 	for {
 		select {
 		case ev := <-mg.watcher.Events:
