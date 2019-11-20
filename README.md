@@ -6,6 +6,11 @@
 子进程启动起来，并对目录进行监控。当增加，移动或删除目录下的程序文件时，会自动启动，  
 重启或停止相关子进程
 
+#### 安装
+```shell
+export GO111MODULE=on
+go get github.com/Felyne/micro-launcher
+```
 #### 使用
 
 ```shell
